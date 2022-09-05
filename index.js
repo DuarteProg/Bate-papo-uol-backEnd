@@ -5,7 +5,7 @@ import joi from "joi";
 import dayjs from "dayjs";
 import { MongoClient } from "mongodb";
 
-// COLEÇÕES: "nomes" e "participantes";
+// COLEÇÕES: "nomes" e "mensagens";
 
 dotenv.config();
 const PORT = process.env.PORT;
@@ -108,14 +108,25 @@ server.post("/messages", async (req, res) => {
 server.get("/messages", async (req, res) => {
   const limit = Number(req.query.limit); // não desestruturei pq precisava se chamar limit
   const { user } = req.headers;
+  const { to, from, type } = req.body;
+
+
 
   try {
     const mensagens = await db.collection("mensagens").find().toArray();
+    const mensagensFiltradas = mensagens.filter(
+      (mensagem) =>
+        mensagem.to === user || 
+        mensagem.from === user ||
+        mensagem.to === "Todos"
+        
+    );
 
-//privar mensagens AAAAAAAHHHHH
-
-
-    res.send(mensagens);
+    if (limit) {
+      res.send(mensagensFiltradas.slice(-limit));
+    } else {
+      res.send(mensagensFiltradas);
+    }
   } catch (error) {
     res.sendStatus(400);
     return;
@@ -132,10 +143,37 @@ server.post("/status", async (req, res) => {
       res.sendStatus(404);
       return;
     }
+
+    await db
+      .collection("nomes")
+      .updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
+    res.sendStatus(200);
   } catch (error) {
     res.sendStatus(400);
   }
 });
+
+setInterval(async () => {
+  
+  
+    const inativos = await db.collection("nomes").find().toArray();
+  const filtrados = inativos.filter(filtrar => ((Date.now() - filtrar.lastStatus)/1000) > 10)
+
+  filtrados.map(filtrado => {
+      db.collection("mensagens").insertOne({
+        from: filtrado.name,
+          to: "Todos",
+          text: "sai da sala...",
+         type: "status",
+         time: dayjs().format("HH:MM:SS")
+      });
+     db.collection("nomes").deleteOne({
+        name: filtrado.name
+      });
+    }) 
+
+  
+}, 15000);
 
 server.listen(PORT, () => {
   console.log(`Servidor funcionando!`);
